@@ -47,7 +47,7 @@ func main() {
 		c := tapi.GetFriendsIdsAll(v)
 		for page := range c {
 			if page.Error != nil {
-				log.Fatal(err)
+				log.Print(page.Error)
 			}
 			for _, id := range page.Ids {
 				idsSet[id] = true
@@ -59,17 +59,30 @@ func main() {
 	for k := range idsSet {
 		idsList = append(idsList, k)
 	}
+	if len(idsList) == 0 {
+		log.Printf("No users to check, provide another input")
+		return
+	}
+
+	var blocked []anaconda.User
 
 	pages := int(math.Ceil(float64(len(idsList) / 100)))
+	log.Printf("Checking %d users, %d page(s) in total", len(idsList), pages+1)
+
 	for i := 0; i <= pages; i++ {
-		max := (i+1)*100
+		log.Printf("Working on page %d/%d", i+1, pages+1)
+
+		max := (i + 1) * 100
 		if len(idsList) < max {
 			max = len(idsList)
 		}
+
 		u, err := tapi.GetUsersLookupByIds(idsList[i*100:max], url.Values{})
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
+			continue
 		}
+
 		for _, us := range u {
 			if us.Status == nil && us.StatusesCount > 0 && !us.Following && us.Id != me.Id {
 				if us.Protected || us.StatusesCount < 100 {
@@ -78,15 +91,19 @@ func main() {
 					v.Add("target_id", us.IdStr)
 					r, err := tapi.GetFriendshipsShow(v)
 					if err != nil {
-						log.Fatal(err)
+						log.Print(err)
 					}
 					if r.Relationship.Source.Blocked_By {
-						log.Printf("Blocked by @%s (%s)", us.ScreenName, us.Name)
+						blocked = append(blocked, us)
 					}
 				} else {
-					log.Printf("Blocked by @%s (%s)", us.ScreenName, us.Name)
+					blocked = append(blocked, us)
 				}
 			}
 		}
+	}
+
+	for _, user := range blocked {
+		log.Printf("Blocked by @%s (%s)", user.ScreenName, user.Name)
 	}
 }
